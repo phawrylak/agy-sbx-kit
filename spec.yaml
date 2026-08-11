@@ -17,6 +17,7 @@ permissions:
     allow:
     # CLI installer + self-update manifests and binaries
     - "antigravity.google:443"
+    - "antigravity-unleash.goog:443"
     - "antigravity-cli-auto-updater-974169037036.us-central1.run.app:443"
     # Google OAuth (sign-in + token exchange)
     - "accounts.google.com:443"
@@ -44,15 +45,11 @@ credentials:
         refreshToken: agy-oauth-refresh-proxy-managed
       credentialFile:
         path: "~/.gemini/antigravity-cli/antigravity-oauth-token"
-        structure:
-          token:
-            access_token: "{{.AccessToken}}"
-            token_type: Bearer
-            refresh_token: "{{.RefreshToken}}"
-            # The host proxy refreshes the real token. Keeping the sentinel
-            # locally valid prevents agy from needlessly refreshing it itself.
-            expiry: "9999-12-31T23:59:59Z"
-          auth_method: consumer
+        # Use the engine-supported template form (as the built-in Claude kit
+        # does), rather than the newer declarative structure form. The host
+        # proxy refreshes the real token; keeping the sentinel locally valid
+        # prevents agy from needlessly refreshing it itself.
+        template: '{"token":{"access_token":"{{.AccessToken}}","token_type":"Bearer","refresh_token":"{{.RefreshToken}}","expiry":"9999-12-31T23:59:59Z"},"auth_method":"consumer"}'
 
 environment:
   variables:

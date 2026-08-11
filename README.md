@@ -61,6 +61,7 @@ YOLO mode intentionally disables Antigravity's interactive tool approvals. Use t
 The kit allows only:
 
 - `antigravity.google` — installer and docs
+- `antigravity-unleash.goog` — Antigravity feature flags
 - `antigravity-cli-auto-updater-974169037036.us-central1.run.app` — release manifests and binaries (also used for self-update)
 - `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com` — Google OAuth
 - `cloudaicompanion.googleapis.com`, `cloudcode-pa.googleapis.com`, `generativelanguage.googleapis.com` — Antigravity / Gemini Code Assist APIs
