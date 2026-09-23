@@ -12,6 +12,21 @@ OAuth is managed by Docker Sandboxes' host-side credential proxy. Sign in once o
 sbx run --kit git+https://github.com/shelajev/agy-sbx-kit.git agy .
 ```
 
+Or use the kit published on Docker Hub:
+
+```bash
+sbx run --kit docker.io/olegselajev241/agy-sbx-kit:latest agy .
+```
+
+For reproducible automation, pin the Git source to a full commit SHA or use the
+Docker Hub digest printed by `sbx kit push` instead of a moving reference.
+
+A commit-pinned Git invocation looks like this:
+
+```bash
+sbx run --kit 'git+https://github.com/shelajev/agy-sbx-kit.git#ref=<40-character-commit-sha>' agy .
+```
+
 On the first run, Docker Sandboxes asks you to approve the kit's `antigravity` OAuth credential binding. Then `agy` prints a Google OAuth URL. Open it in a browser on your laptop, complete the Google sign-in, then paste the callback URL (or code) back into the sandbox terminal. The host credential proxy captures and stores that OAuth session. New sandboxes created from this kit can then start already authenticated.
 
 ## Named sandbox

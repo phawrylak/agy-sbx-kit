@@ -1,6 +1,7 @@
 schemaVersion: "2"
 kind: sandbox
 name: agy
+version: "1.0.0"
 displayName: Antigravity CLI (agy)
 description: Run Google's Antigravity CLI (agy) in YOLO mode inside a Docker Sandbox. First run prints a Google OAuth URL you complete in your local browser; credentials persist across sandbox restarts.
 
@@ -19,11 +20,15 @@ permissions:
     - "antigravity.google:443"
     - "antigravity-unleash.goog:443"
     - "antigravity-cli-auto-updater-974169037036.us-central1.run.app:443"
+    - "storage.googleapis.com:443"
     # Google OAuth (sign-in + token exchange)
     - "accounts.google.com:443"
+    - "lh3.googleusercontent.com:443"
     - "oauth2.googleapis.com:443"
+    - "play.googleapis.com:443"
     - "www.googleapis.com:443"
     # Antigravity / Gemini Code Assist model + agent APIs
+    - "aicode.googleapis.com:443"
     - "cloudaicompanion.googleapis.com:443"
     - "cloudcode-pa.googleapis.com:443"
     - "daily-cloudcode-pa.googleapis.com:443"
@@ -37,6 +42,7 @@ credentials:
         host: oauth2.googleapis.com
         path: /token
       resourceHosts:
+        - aicode.googleapis.com
         - cloudaicompanion.googleapis.com
         - cloudcode-pa.googleapis.com
         - daily-cloudcode-pa.googleapis.com
