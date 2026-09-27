@@ -1,6 +1,6 @@
 # Antigravity CLI (`agy`) Sandbox Kit
 
-Docker Sandboxes kit for running [Google's Antigravity CLI](https://antigravity.google/product/antigravity-cli) (`agy`) in YOLO mode inside an isolated sandbox.
+Docker Sandboxes **v3 workload kit** for running [Google's Antigravity CLI](https://antigravity.google/product/antigravity-cli) (`agy`) in YOLO mode inside an isolated sandbox. The repository also ships an `agy-mixin` variant for adding the CLI to another v3 workload.
 
 The kit installs the official `agy` binary, starts it with `--dangerously-skip-permissions --mode=accept-edits`, and forces its headless OAuth flow so authentication works without a local browser. Antigravity can therefore run commands and edit files without its own approval prompts; the Docker sandbox remains the security boundary.
 
@@ -9,14 +9,18 @@ OAuth is managed by Docker Sandboxes' host-side credential proxy. Sign in once o
 ## Quick start
 
 ```bash
-sbx run --kit git+https://github.com/shelajev/agy-sbx-kit.git agy .
+sbx run git+https://github.com/shelajev/agy-sbx-kit.git .
 ```
 
-Or use the kit published on Docker Hub:
+After publishing the v3 artifact, run it from Docker Hub:
 
 ```bash
-sbx run --kit docker.io/olegselajev241/agy-sbx-kit:latest agy .
+sbx run docker.io/olegselajev241/agy-sbx-kit:latest .
 ```
+
+The existing `latest` tag may still point to the legacy v2 artifact until the
+v3 release workflow has completed; use the Git source form while reviewing
+this migration.
 
 For reproducible automation, pin the Git source to a full commit SHA or use the
 Docker Hub digest printed by `sbx kit push` instead of a moving reference.
@@ -24,7 +28,7 @@ Docker Hub digest printed by `sbx kit push` instead of a moving reference.
 A commit-pinned Git invocation looks like this:
 
 ```bash
-sbx run --kit 'git+https://github.com/shelajev/agy-sbx-kit.git#ref=<40-character-commit-sha>' agy .
+sbx run 'git+https://github.com/shelajev/agy-sbx-kit.git#ref=<40-character-commit-sha>' .
 ```
 
 On the first run, Docker Sandboxes asks you to approve the kit's `antigravity` OAuth credential binding. Then `agy` prints a Google OAuth URL. Open it in a browser on your laptop, complete the Google sign-in, then paste the callback URL (or code) back into the sandbox terminal. The host credential proxy captures and stores that OAuth session. New sandboxes created from this kit can then start already authenticated.
@@ -35,12 +39,23 @@ For a sandbox you can reattach to later:
 
 ```bash
 sbx create --name agy-current \
-  --kit git+https://github.com/shelajev/agy-sbx-kit.git agy .
+  git+https://github.com/shelajev/agy-sbx-kit.git .
 
 sbx run --name agy-current
 ```
 
-Current `sbx` versions remember the custom agent kit on the named sandbox. If an older version does not resolve it automatically, reattach with both `--kit git+https://github.com/shelajev/agy-sbx-kit.git` and `--name agy-current`.
+Current `sbx` versions remember the workload kit on the named sandbox.
+
+## Mixin variant
+
+To add Antigravity to another v3 workload without replacing that workload's entrypoint, compose `agy-mixin` and run `agy` from the resulting environment:
+
+```bash
+sbx run <V3-WORKLOAD> \
+  --kit 'git+https://github.com/shelajev/agy-sbx-kit.git#dir=agy-mixin' .
+```
+
+Kits v3 cannot be composed with v1 or v2 kits. The workload and every mixin in one sandbox must all use v3.
 
 ## How auth works
 
@@ -59,10 +74,9 @@ To log out from inside the sandbox, run `/logout` at the `agy` prompt.
 
 ## How it works
 
-- **Install (once at sandbox creation):**
-  - `curl -fsSL https://antigravity.google/cli/install.sh | bash` — downloads the platform-specific `agy` binary into `~/.local/bin/agy` and runs the binary's `install` step for shell wiring.
+- **Image build:** `agy.dockerfile` runs the official installer and packages the resulting CLI into the kit artifact. Sandbox creation no longer downloads executable content.
 - **Entrypoint:** `agy --dangerously-skip-permissions --mode=accept-edits` (the shell-docker image puts `~/.local/bin` on PATH). The first flag covers tool permission requests; the execution mode separately auto-approves file edits.
-- **Permissions:** The kit seeds `~/.gemini/antigravity-cli/settings.json` with permissive tool, file, URL, MCP, and artifact-review settings. The file is created only when missing, so later user changes are preserved. The command-line flags are the per-session overrides.
+- **Lifecycle:** At sandbox creation, the kit seeds `~/.gemini/antigravity-cli/settings.json` with permissive tool, file, URL, MCP, and artifact-review settings. The file is created only when missing, so later user changes are preserved. The command-line flags are the per-session overrides.
 - **Authentication:** Docker Sandboxes intercepts the Google token exchange and writes proxy-managed sentinel credentials at Antigravity's expected token path. The host holds and refreshes the real tokens for reuse across sandboxes.
 - **Persistence:** Inherited from `sbx` defaults — conversations and other sandbox-local state survive restarts, while authentication is shared through the host credential proxy.
 - **Self-update:** `agy` self-updates in the background; the updater domain is allowlisted.
@@ -81,7 +95,7 @@ The kit allows only:
 - `accounts.google.com`, `oauth2.googleapis.com`, `www.googleapis.com` — Google OAuth
 - `cloudaicompanion.googleapis.com`, `cloudcode-pa.googleapis.com`, `daily-cloudcode-pa.googleapis.com`, `generativelanguage.googleapis.com` — Antigravity / Gemini Code Assist APIs
 
-If your workflow needs to reach package registries (npm, PyPI, crates.io, Go modules, etc.) or your own services, fork the kit and extend `permissions.network.allow` in `spec.yaml`.
+If your workflow needs to reach package registries (npm, PyPI, crates.io, Go modules, etc.) or your own services, fork the kit and extend the runtime allowlist in the `com.docker.sandbox/network-policy@1` capability in `agy.yaml`.
 
 ## Smoke test
 
@@ -105,6 +119,42 @@ Use any sandbox name as the first argument:
 
 ```bash
 ./run.sh my-sandbox
+```
+
+## Build and validate
+
+Kits v3 build as ordinary OCI images through the sandbox-kit frontend:
+
+```bash
+docker buildx build . -f agy.yaml -t agy-sbx-kit:1.0.0 --load
+docker buildx build agy-mixin -f agy-mixin/agy-mixin.yaml \
+  -t agy-sbx-kit-mixin:1.0.0 --load
+```
+
+In a TLS-inspecting network, pass the organization's CA bundle as an ephemeral
+BuildKit secret with `--secret id=proxy_ca,src=/path/to/ca-bundle.crt`. The
+certificate is available only to the installer step and is not stored in the
+resulting image.
+
+For conformance testing without publishing, export an OCI layout and run `kit-tck`:
+
+```bash
+docker buildx build . -f agy.yaml -t agy-sbx-kit:1.0.0 \
+  --output type=oci,dest=/tmp/agy-kit-layout,tar=false
+kit-tck validate --layout /tmp/agy-kit-layout 1.0.0
+```
+
+Publish workload and mixin as separate v3 artifacts; do not use the legacy `sbx kit push` packaging flow:
+
+```bash
+docker buildx build . -f agy.yaml --platform linux/amd64,linux/arm64 \
+  -t docker.io/olegselajev241/agy-sbx-kit:1.0.0 \
+  -t docker.io/olegselajev241/agy-sbx-kit:latest --push
+
+docker buildx build agy-mixin -f agy-mixin/agy-mixin.yaml \
+  --platform linux/amd64,linux/arm64 \
+  -t docker.io/olegselajev241/agy-sbx-kit-mixin:1.0.0 \
+  -t docker.io/olegselajev241/agy-sbx-kit-mixin:latest --push
 ```
 
 ## License

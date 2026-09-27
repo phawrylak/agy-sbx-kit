@@ -1,0 +1,118 @@
+# syntax=docker/sandbox-kit:3
+# Migration of the v2 agy sandbox kit. Runtime configuration lives in the
+# image; host-enforced authority is declared as versioned capabilities.
+schemaVersion: "3"
+kind: workload
+
+displayName: Antigravity CLI (agy)
+description: >-
+  Run Google's Antigravity CLI (agy) in YOLO mode inside a Docker Sandbox.
+  First run prints a Google OAuth URL you complete in your local browser;
+  credentials persist across sandbox restarts.
+version: "1.0.0"
+sourceUrl: https://github.com/shelajev/agy-sbx-kit
+licenses: [Apache-2.0]
+
+# MIGRATION NOTE: agy installs from the vendor's floating channel and also
+# self-updates. The kit therefore makes no versioned `provides` claim that its
+# content cannot enforce.
+
+capabilities:
+  # This workload is an agent sandbox: sbx launches the agent using the
+  # identity and command in the image configuration.
+  - type: com.docker.sandbox/sbx@1
+
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          # CLI self-update manifests and binaries. Installation moved into
+          # the image build, so no install-phase grant is needed.
+          - antigravity.google:443
+          - antigravity-unleash.goog:443
+          - antigravity-cli-auto-updater-974169037036.us-central1.run.app:443
+          - storage.googleapis.com:443
+          # Google OAuth (sign-in + token exchange).
+          - accounts.google.com:443
+          - lh3.googleusercontent.com:443
+          - oauth2.googleapis.com:443
+          - play.googleapis.com:443
+          - www.googleapis.com:443
+          # Antigravity / Gemini Code Assist model + agent APIs.
+          - aicode.googleapis.com:443
+          - cloudaicompanion.googleapis.com:443
+          - cloudcode-pa.googleapis.com:443
+          - daily-cloudcode-pa.googleapis.com:443
+          - generativelanguage.googleapis.com:443
+
+  - type: com.docker.sandbox/credential@1
+    # Faithful to v2, where credentials were optional. Without a host binding,
+    # agy falls back to its interactive copy/paste OAuth login.
+    optional: true
+    description: Google OAuth session used by Antigravity CLI
+    config:
+      service: antigravity
+      phase: runtime
+      oauth:
+        tokenEndpoint:
+          host: oauth2.googleapis.com
+          path: /token
+        resourceHosts:
+          - aicode.googleapis.com
+          - cloudaicompanion.googleapis.com
+          - cloudcode-pa.googleapis.com
+          - daily-cloudcode-pa.googleapis.com
+          - generativelanguage.googleapis.com
+          - www.googleapis.com
+        sentinels:
+          accessToken: agy-oauth-access-proxy-managed
+          refreshToken: agy-oauth-refresh-proxy-managed
+        # Declarative v3 equivalent of the v2 Go-template credential file.
+        credentialFile:
+          path: ~/.gemini/antigravity-cli/antigravity-oauth-token
+          structure:
+            token:
+              access_token: "{{.AccessToken}}"
+              token_type: Bearer
+              refresh_token: "{{.RefreshToken}}"
+              expiry: "9999-12-31T23:59:59Z"
+            auth_method: consumer
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      install:
+        # MIGRATION NOTE: v3 removed ${WORKDIR} substitution from staged file
+        # content. Generate the settings after the workspace is mounted and
+        # preserve v2's only-if-missing behavior.
+        - command: |
+            set -eu
+            settings_dir="$HOME/.gemini/antigravity-cli"
+            settings="$settings_dir/settings.json"
+            [ ! -e "$settings" ] || exit 0
+            mkdir -p "$settings_dir"
+            ws="${WORKSPACE_DIR:-/workspace}"
+            esc=$(printf '%s' "$ws" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g; s/\r/\\r/g')
+            printf '%s\n' "{
+              \"agentMode\": \"accept-edits\",
+              \"artifactReviewMode\": \"always-proceed\",
+              \"fileAccessPolicy\": \"allow\",
+              \"internetAccessPolicy\": \"allow\",
+              \"nonWorkspaceFileAccess\": \"allow\",
+              \"permissions\": {
+                \"allow\": [
+                  \"command(*)\",
+                  \"execute_url(*)\",
+                  \"mcp(*)\",
+                  \"read_file(*)\",
+                  \"read_url(*)\",
+                  \"unsandboxed(*)\",
+                  \"write_file(*)\"
+                ]
+              },
+              \"toolExecutionPolicy\": \"always-proceed\",
+              \"trustedWorkspaces\": [\"$esc\"]
+            }" > "$settings"
+            chmod 0600 "$settings"
+          user: agent
+          env: [WORKSPACE_DIR]
+          description: Seed permissive Antigravity settings for sandboxed operation

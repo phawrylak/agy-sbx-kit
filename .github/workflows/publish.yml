@@ -1,0 +1,72 @@
+name: Publish Kits v3
+
+# Publishing is release-only. Pull requests cannot start this workflow and
+# never receive the Docker Hub credential.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Check release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          workload_version=$(sed -n 's/^version: "\(.*\)"/\1/p' agy.yaml)
+          mixin_version=$(sed -n 's/^version: "\(.*\)"/\1/p' agy-mixin/agy-mixin.yaml)
+          test "$version" = "$workload_version"
+          test "$version" = "$mixin_version"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish workload
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: agy.yaml
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=agy-workload
+          cache-to: type=gha,mode=max,scope=agy-workload
+          tags: |
+            docker.io/${{ vars.DOCKERHUB_USERNAME }}/agy-sbx-kit:${{ steps.version.outputs.value }}
+            docker.io/${{ vars.DOCKERHUB_USERNAME }}/agy-sbx-kit:latest
+
+      - name: Publish mixin
+        uses: docker/build-push-action@v7
+        with:
+          context: agy-mixin
+          file: agy-mixin/agy-mixin.yaml
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=agy-mixin
+          cache-to: type=gha,mode=max,scope=agy-mixin
+          tags: |
+            docker.io/${{ vars.DOCKERHUB_USERNAME }}/agy-sbx-kit-mixin:${{ steps.version.outputs.value }}
+            docker.io/${{ vars.DOCKERHUB_USERNAME }}/agy-sbx-kit-mixin:latest

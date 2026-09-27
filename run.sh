@@ -8,4 +8,4 @@ if [[ $# -gt 0 ]]; then
   shift
 fi
 
-exec sbx run --kit "$kit_dir" agy --name "$sandbox" "$@"
+exec sbx run "$kit_dir" --name "$sandbox" "$@"

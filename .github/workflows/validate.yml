@@ -1,9 +1,8 @@
-name: Validate sbx kit
+name: Validate Kits v3
 
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -12,31 +11,36 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
 
-      - name: Install sbx
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Install kit-tck
+        run: go install github.com/docker/sandbox-kit-spec/v3/cmd/kit-tck@v3.0.0-m.6
+
+      - name: Build workload OCI artifact
         run: |
-          curl -fsSL https://get.docker.com | sudo REPO_ONLY=1 sh
-          sudo apt-get update
-          sudo apt-get install -y docker-sbx
+          docker buildx build . -f agy.yaml -t agy-sbx-kit:1.0.0 \
+            --output type=oci,dest=/tmp/agy-layout,tar=false
 
-      - name: Show sbx version
-        run: sbx version
+      - name: Validate workload conformance
+        run: kit-tck validate --layout /tmp/agy-layout 1.0.0
 
-      - name: Validate kit directory
-        run: sbx kit validate .
-
-      - name: Inspect kit
-        run: sbx kit inspect .
-
-      - name: Pack and validate kit artifact
+      - name: Build mixin OCI artifact
         run: |
-          sbx kit pack . -o /tmp/agy-kit.zip
-          sbx kit validate /tmp/agy-kit.zip
+          docker buildx build agy-mixin -f agy-mixin/agy-mixin.yaml \
+            -t agy-sbx-kit-mixin:1.0.0 \
+            --output type=oci,dest=/tmp/agy-mixin-layout,tar=false
+
+      - name: Validate mixin conformance
+        run: kit-tck validate --layout /tmp/agy-mixin-layout 1.0.0
 
       - name: Check wrapper syntax
         run: bash -n run.sh
